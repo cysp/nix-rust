@@ -21,6 +21,8 @@ pub enum AddressFamily {
     Unix = consts::AF_UNIX,
     Inet = consts::AF_INET,
     Inet6 = consts::AF_INET6,
+    #[cfg(target_os = "linux")]
+    Bluetooth = consts::AF_BLUETOOTH,
 }
 
 #[derive(Copy)]
@@ -394,6 +396,81 @@ impl fmt::Display for UnixAddr {
 
 /*
  *
+ * ==== HciAddr ====
+ *
+ */
+
+#[repr(C)]
+#[derive(Copy,PartialEq,Eq)]
+#[cfg(target_os = "linux")]
+pub struct sockaddr_hci {
+    pub hci_family: libc::sa_family_t,
+    pub hci_dev: libc::uint16_t,
+    pub hci_channel: libc::uint16_t,
+}
+
+#[derive(Copy)]
+#[cfg(target_os = "linux")]
+pub enum HciAddr {
+    Bluetooth(sockaddr_hci),
+}
+
+#[cfg(target_os = "linux")]
+pub enum HciDev {
+    None,
+    Dev(u16),
+}
+
+#[cfg(target_os = "linux")]
+pub enum HciChannel {
+    Raw = consts::HCI_CHANNEL_RAW as isize,
+    User = consts::HCI_CHANNEL_USER as isize,
+    Monitor = consts::HCI_CHANNEL_MONITOR as isize,
+    Control = consts::HCI_CHANNEL_CONTROL as isize,
+}
+
+#[cfg(target_os = "linux")]
+impl HciAddr {
+    pub fn new_bluetooth(dev: HciDev, channel: HciChannel) -> HciAddr {
+        let hci_dev = match dev {
+            HciDev::None => consts::HCI_DEV_NONE,
+            HciDev::Dev(d) => d,
+        };
+        HciAddr::Bluetooth(sockaddr_hci {
+            hci_family: AddressFamily::Bluetooth as libc::sa_family_t,
+            hci_dev: hci_dev,
+            hci_channel: channel as libc::uint16_t,
+        })
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl hash::Hash for HciAddr {
+    fn hash<H: hash::Hasher>(&self, s: &mut H) {
+        match self {
+            &HciAddr::Bluetooth(ref addr) => ( addr.hci_family, addr.hci_dev, addr.hci_channel ).hash(s)
+        }
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl Clone for HciAddr {
+    fn clone(&self) -> HciAddr {
+        *self
+    }
+}
+
+#[cfg(target_os = "linux")]
+impl fmt::Display for HciAddr {
+    fn fmt(&self, f: &mut fmt::Formatter) -> fmt::Result {
+        match self {
+            &HciAddr::Bluetooth(ref addr) => format!("Bluetooth ({}, {})", addr.hci_dev, addr.hci_channel),
+        }.fmt(f)
+    }
+}
+
+/*
+ *
  * ===== Sock addr =====
  *
  */
@@ -402,7 +479,9 @@ impl fmt::Display for UnixAddr {
 #[derive(Copy)]
 pub enum SockAddr {
     Inet(InetAddr),
-    Unix(UnixAddr)
+    Unix(UnixAddr),
+    #[cfg(target_os = "linux")]
+    Hci(HciAddr),
 }
 
 impl SockAddr {
@@ -414,11 +493,18 @@ impl SockAddr {
         Ok(SockAddr::Unix(try!(UnixAddr::new(path))))
     }
 
+    #[cfg(target_os = "linux")]
+    pub fn new_hci(addr: HciAddr) -> SockAddr {
+        SockAddr::Hci(addr)
+    }
+
     pub fn family(&self) -> AddressFamily {
         match *self {
             SockAddr::Inet(InetAddr::V4(..)) => AddressFamily::Inet,
             SockAddr::Inet(InetAddr::V6(..)) => AddressFamily::Inet6,
             SockAddr::Unix(..) => AddressFamily::Unix,
+            #[cfg(target_os = "linux")]
+            SockAddr::Hci(HciAddr::Bluetooth(..)) => AddressFamily::Bluetooth,
         }
     }
 
@@ -431,6 +517,8 @@ impl SockAddr {
             SockAddr::Inet(InetAddr::V4(ref addr)) => (mem::transmute(addr), mem::size_of::<libc::sockaddr_in>() as libc::socklen_t),
             SockAddr::Inet(InetAddr::V6(ref addr)) => (mem::transmute(addr), mem::size_of::<libc::sockaddr_in6>() as libc::socklen_t),
             SockAddr::Unix(UnixAddr(ref addr)) => (mem::transmute(addr), mem::size_of::<libc::sockaddr_un>() as libc::socklen_t),
+            #[cfg(target_os = "linux")]
+            SockAddr::Hci(HciAddr::Bluetooth(ref addr)) => (mem::transmute(addr), mem::size_of::<sockaddr_hci>() as libc::socklen_t),
         }
     }
 }
@@ -457,6 +545,8 @@ impl hash::Hash for SockAddr {
         match *self {
             SockAddr::Inet(ref a) => a.hash(s),
             SockAddr::Unix(ref a) => a.hash(s),
+            #[cfg(target_os = "linux")]
+            SockAddr::Hci(ref a) => a.hash(s),
         }
     }
 }
@@ -472,6 +562,8 @@ impl fmt::Display for SockAddr {
         match *self {
             SockAddr::Inet(ref inet) => inet.fmt(f),
             SockAddr::Unix(ref unix) => unix.fmt(f),
+            #[cfg(target_os = "linux")]
+            SockAddr::Hci(ref hci) => hci.fmt(f),
         }
     }
 }

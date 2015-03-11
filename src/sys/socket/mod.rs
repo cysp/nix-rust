@@ -31,6 +31,12 @@ pub use self::addr::{
     Ipv4Addr,
     Ipv6Addr,
 };
+#[cfg(target_os = "linux")]
+pub use self::addr::{
+    HciAddr,
+    HciDev,
+    HciChannel
+};
 pub use libc::{
     in_addr,
     in6_addr,
@@ -40,6 +46,8 @@ pub use libc::{
     sockaddr_un,
     sa_family_t,
 };
+#[cfg(target_os = "linux")]
+pub use self::addr::sockaddr_hci;
 
 pub use self::multicast::{
     ip_mreq,
@@ -79,7 +87,7 @@ bitflags!(
 /// Create an endpoint for communication
 ///
 /// [Further reading](http://man7.org/linux/man-pages/man2/socket.2.html)
-pub fn socket(domain: AddressFamily, ty: SockType, flags: SockFlag) -> Result<RawFd> {
+pub fn socket(domain: AddressFamily, ty: SockType, flags: SockFlag, protocol: c_int) -> Result<RawFd> {
     let mut ty = ty as c_int;
     let feat_atomic = features::socket_atomic_cloexec();
 
@@ -88,7 +96,7 @@ pub fn socket(domain: AddressFamily, ty: SockType, flags: SockFlag) -> Result<Ra
     }
 
     // TODO: Check the kernel version
-    let res = unsafe { ffi::socket(domain as c_int, ty, 0) };
+    let res = unsafe { ffi::socket(domain as c_int, ty, protocol) };
 
     if res < 0 {
         return Err(Error::Sys(Errno::last()));

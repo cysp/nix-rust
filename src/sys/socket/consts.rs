@@ -6,12 +6,13 @@ pub const IPV6_DROP_MEMBERSHIP: c_int = libc::IPV6_DROP_MEMBERSHIP;
 
 #[cfg(any(target_os = "linux", target_os = "android"))]
 mod os {
-    use libc::{self, c_int, uint8_t};
+    use libc::{self, c_int, uint8_t, uint16_t};
 
     pub const AF_UNIX: c_int  = 1;
     pub const AF_LOCAL: c_int = AF_UNIX;
     pub const AF_INET: c_int  = 2;
     pub const AF_INET6: c_int = 10;
+    pub const AF_BLUETOOTH: c_int = 31;
 
     pub const SOCK_STREAM: c_int = 1;
     pub const SOCK_DGRAM: c_int = 2;
@@ -83,6 +84,13 @@ mod os {
     pub const INADDR_ANY: InAddrT = 0;
     pub const INADDR_NONE: InAddrT = 0xffffffff;
     pub const INADDR_BROADCAST: InAddrT = 0xffffffff;
+
+    pub const HCI_DEV_NONE: uint16_t = 0xffff;
+
+    pub const HCI_CHANNEL_RAW: uint16_t = 0;
+    pub const HCI_CHANNEL_USER: uint16_t = 1;
+    pub const HCI_CHANNEL_MONITOR: uint16_t = 2;
+    pub const HCI_CHANNEL_CONTROL: uint16_t = 3;
 
     pub type SockMessageFlags = i32;
     // Flags for send/recv and their relatives
