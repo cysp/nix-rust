@@ -291,6 +291,10 @@ mod ffi {
     use libc;
     use super::signal::{sigaction, sigset_t};
 
+    pub const SIG_BLOCK: libc::c_int = 0;
+    pub const SIG_UNBLOCK: libc::c_int = 1;
+    pub const SIG_SETMASK: libc::c_int = 2;
+
     #[allow(improper_ctypes)]
     extern {
         pub fn sigaction(signum: libc::c_int,
@@ -302,12 +306,28 @@ mod ffi {
         pub fn sigemptyset(set: *mut sigset_t) -> libc::c_int;
 
         pub fn kill(pid: libc::pid_t, signum: libc::c_int) -> libc::c_int;
+
+        pub fn pthread_sigmask(how: libc::c_int, set: *const sigset_t, oset: *mut sigset_t) -> libc::c_int;
     }
 }
 
 #[derive(Clone, Copy)]
 pub struct SigSet {
     sigset: sigset_t
+}
+
+impl SigSet {
+    pub fn as_raw(&self) -> *const sigset_t {
+        &self.sigset
+    }
+    pub fn as_raw_mut(&mut self) -> *mut sigset_t {
+        &mut self.sigset
+    }
+    pub fn from_raw(sigset: sigset_t) -> SigSet {
+        SigSet {
+            sigset: sigset,
+        }
+    }
 }
 
 pub type SigNum = libc::c_int;
@@ -374,6 +394,41 @@ pub unsafe fn sigaction(signum: SigNum, sigaction: &SigAction) -> Result<SigActi
 pub fn kill(pid: libc::pid_t, signum: SigNum) -> Result<()> {
     let res = unsafe { ffi::kill(pid, signum) };
 
+    if res < 0 {
+        return Err(Error::Sys(Errno::last()));
+    }
+
+    Ok(())
+}
+
+
+pub enum SigMaskHow {
+    GetMask,
+    Block(SigSet),
+    Unblock(SigSet),
+    SetMask(SigSet),
+}
+
+pub fn pthread_sigmask(how: SigMaskHow, oset: Option<&mut SigSet>) -> Result<()> {
+    let (how, set): (libc::c_int, Option<SigSet>) = match how {
+        SigMaskHow::GetMask => (0, None),
+        SigMaskHow::Block(set) => (ffi::SIG_BLOCK, Some(set)),
+        SigMaskHow::Unblock(set) => (ffi::SIG_UNBLOCK, Some(set)),
+        SigMaskHow::SetMask(set) => (ffi::SIG_SETMASK, Some(set)),
+    };
+
+    let set: *const sigset_t = match set {
+        None => 0 as *const _,
+        Some(ref set) => set.as_raw(),
+    };
+    let oset: *mut sigset_t = match oset {
+        None => 0 as *mut _,
+        Some(oset) => oset.as_raw_mut(),
+    };
+
+    let res = unsafe {
+        ffi::pthread_sigmask(how, set, oset)
+    };
     if res < 0 {
         return Err(Error::Sys(Errno::last()));
     }
